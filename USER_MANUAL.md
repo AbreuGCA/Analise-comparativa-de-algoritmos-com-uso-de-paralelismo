@@ -18,7 +18,7 @@ Use o script `benchmark.ps1` para automatizar partições, execução e geraçã
 Caso dê erro de permissão, rode:
 
 ```
-powershell -ExecutionPolicy Bypass -File 'C:\Users\pedro\Documents\Códigos\Java\Computação paralela\Analise-comparativa-de-algoritmos-com-uso-de-paralelismo-main\benchmark.ps1
+powershell -ExecutionPolicy Bypass -File 'caminho do projeto\benchmark.ps1
 ```
 O script gera arquivos CSV temporários e um `results/results.csv` consolidado.
 
