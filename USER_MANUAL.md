@@ -4,7 +4,6 @@ Este manual descreve como preparar o ambiente, compilar, executar os benchmarks 
 
 ## Pré-requisitos
 - Java JDK 8+ (verifique com `java -version` e `javac -version`).
-- Crie um diretório `libs/` dentro de `wordcount/` e coloque `jocl-2.0.4.jar` lá se for usar GPU.
 - Python 3.8+ (opcional, necessário para gerar gráficos).
 - (Opcional, para GPU) `jocl-2.0.4.jar` em `wordcount/libs/` e as bibliotecas nativas do JOCL (DLL/.so/.dylib) disponíveis no `PATH` ou definidas via `-Djava.library.path`.
 
