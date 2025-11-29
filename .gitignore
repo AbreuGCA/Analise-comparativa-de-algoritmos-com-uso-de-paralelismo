@@ -1,0 +1,32 @@
+# Java artifacts
+*.class
+*.jar
+bin/
+build/
+
+# IDE / editor
+.idea/
+.vscode/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Results and temporary files
+/results/
+/tmp_*.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local environment / secrets
+.env
+
+# JOCL native libs (user must place them in system PATH or configure java.library.path)
+# Keep the jar out of the repository if it's large; ignore common native lib names
+*.dll
+*.so
+*.dylib
