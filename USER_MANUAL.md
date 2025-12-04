@@ -4,7 +4,6 @@ Este manual descreve como preparar o ambiente, compilar, executar os benchmarks 
 
 ## Pré-requisitos
 - Java JDK 8+ (verifique com `java -version` e `javac -version`).
-- Crie um diretório `libs/` dentro de `wordcount/` e coloque `jocl-2.0.4.jar` lá se for usar GPU.
 - Python 3.8+ (opcional, necessário para gerar gráficos).
 - (Opcional, para GPU) `jocl-2.0.4.jar` em `wordcount/libs/` e as bibliotecas nativas do JOCL (DLL/.so/.dylib) disponíveis no `PATH` ou definidas via `-Djava.library.path`.
 
@@ -19,7 +18,7 @@ Use o script `benchmark.ps1` para automatizar partições, execução e geraçã
 Caso dê erro de permissão, rode:
 
 ```
-powershell -ExecutionPolicy Bypass -File 'C:\Users\pedro\Documents\Códigos\Java\Computação paralela\Analise-comparativa-de-algoritmos-com-uso-de-paralelismo-main\benchmark.ps1
+powershell -ExecutionPolicy Bypass -File 'caminho do projeto\benchmark.ps1
 ```
 O script gera arquivos CSV temporários e um `results/results.csv` consolidado.
 
@@ -71,12 +70,3 @@ Os gráficos (`results_time.png`, `results_speedup.png`, `results_counts.png`) s
 - Se o plot falhar por estilo Matplotlib: verifique versões do Matplotlib ou remova estilos customizados.
 - Se o GPU falhar: execute primeiro com `all` mas monitore mensagens de exceção; execute `WordCountMain cpu` para comparar.
 - Para problemas de encoding em strings alvo: o kernel GPU compara bytes; evite caracteres multi-byte ou normalize UTF-8 uniformemente.
-
-## Notas finais
-
-Se quiser, eu posso:
-- Gerar um `run.ps1` que passe automaticamente `-Djava.library.path` com um parâmetro.
-- Gerar um `build.sh` equivalente para Unix/macOS.
-- Adicionar instruções de instalação automática do JOCL (não recomendado sem aprovação).
-
-Escolha uma dessas opções ou peça para eu fazer o commit automaticamente (eu só prepararei os comandos, não executarei o push sem sua confirmação).
