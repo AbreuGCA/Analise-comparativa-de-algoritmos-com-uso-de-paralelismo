@@ -1,135 +1,106 @@
-# WordCount — benchmark: Serial / CPU / GPU
+# Relatório de Benchmarks - Análise Comparativa de Algoritmos com Paralelismo
 
-Uma ferramenta pequena para comparar contagem de ocorrências de uma palavra em textos usando três abordagens:
+**Data:** 29 de Novembro de 2025
 
-- Serial CPU (`WordCountMain.countSerial`) — busca simples, permite matches sobrepostos.
-- Paralelo CPU (`WordCountMain.countParallelCPU`) — divide linhas por *chunks* e usa um pool de threads.
-- Paralelo GPU (`GPUWordCounter.countWithJOCL`) — usa JOCL/OpenCL; cada índice é testado no kernel.
+---
 
-— Estrutura do projeto (detalhada)
+## Resumo
 
-Este projeto está organizado para separar responsabilidades: código Java (contagem e GPU), kernel OpenCL, utilitários de benchmark, e frontend Python para visualização.
+Este documento apresenta a análise comparativa do desempenho de três implementações para a tarefa de contagem de ocorrências da palavra "the" em textos: implementação serial em CPU (`SerialCPU`), paralelização em CPU (`ParallelCPU`) e implementação via GPU (`ParallelGPU`). Os testes foram realizados em três obras clássicas (Don Quixote, Dracula, Moby Dick) em quatro tamanhos (25%, 50%, 75% e 100%), com 3 repetições por cenário. As métricas principais são tempo de execução (ms) e consistência entre execuções. Conclusão principal: para este problema e tamanhos testados, a implementação serial em CPU apresentou o melhor desempenho e estabilidade; as alternativas paralelas (CPU/GPU) mostraram overheads que penalizam o tempo total.
 
-- `src/`
-	- `WordCountMain.java` — ponto de entrada CLI. Contém as três estratégias (serial, paralelo CPU e invocação do GPU). Responsável por:
-		- parse de argumentos e execução das rotinas de benchmark;
-		- repetir execuções (`runs`) e gravar resultados em CSV (`method,file,target,count,millis,run`);
-		- escolher entre modos `serial`, `cpu`, `gpu` e `all`.
-	- `GPUWordCounter.java` — implementação JOCL/OpenCL que prepara buffers, compila o kernel (ou carrega `kernels/match_kernel.cl`) e executa a kernel. Observações de design:
-		- JOCL é usado apenas quando o JAR e as libs nativas estiverem disponíveis; o código tenta falhar graciosamente para permitir execuções apenas-CPU.
-		- a kernel faz comparação byte-a-byte (UTF-8); por isso strings multi-byte precisam ser tratadas com cuidado.
+---
 
-- `kernels/`
-	- `match_kernel.cl` — kernel OpenCL que avalia se o `target` aparece começando em cada índice do texto. O kernel é simples por legibilidade; para produção considere redução por work-group para contar ocorrências eficientemente.
+## Introdução
 
-- `python-frontend/`
-	- `plot_results.py` — script para gerar gráficos (tempo, speedup e contagens) a partir de `results/results.csv`.
-		- Usa `pandas` para agregar e `matplotlib` para desenhar gráficos agrupados e anotar barras.
-		- Projetado para ser executado em um venv Python (veja `requirements.txt`).
+Neste trabalho comparamos três abordagens para a contagem de palavras em textos:
 
-- `samples/`
-	- Contém textos de exemplo (e.g., `MobyDick-217452.txt`). O `benchmark.ps1` cria partições (25/50/75/100%) desses arquivos para testar escala de entrada.
+- **SerialCPU**: algoritmo sequencial que percorre o texto e contabiliza ocorrências.
+- **ParallelCPU**: versão que segmenta o texto e processa segmentos em paralelo usando múltiplas threads no CPU, com posterior redução das contagens.
+- **ParallelGPU**: versão que transfere dados para a GPU e executa kernels OpenCL para contar ocorrências, reduzindo resultados no dispositivo e retornando ao host.
 
-- `results/`
-	- Local onde o `benchmark.ps1` e `WordCountMain` escrevem CSVs e onde o plotter salva PNGs. Este diretório é ignorado por `.gitignore` para evitar commitar resultados grandes.
+A abordagem do estudo foi empírica: gerar amostras (25/50/75/100% dos arquivos), executar cada método 3 vezes, consolidar tempos e contagens em CSV e gerar gráficos para apoiar a análise. O objetivo é identificar padrões de desempenho e avaliar se a paralelização (CPU/GPU) traz ganhos práticos para este tipo de problema.
 
-- `libs/`
-	- Local sugerido para colocar `jocl-2.0.4.jar` (não comitado por padrão). As libs nativas (DLL/.so/.dylib) normalmente não ficam no repositório — instruções para adicioná-las localmente estão no `USER_MANUAL.md`.
+## Metodologia
 
-- `benchmark.ps1` (PowerShell)
-	- Orquestra compilação opcional, particionamento dos samples, execução de `WordCountMain` nos vários modos, e consolidação dos CSVs em `results/results.csv`.
-	- Projetado para ser idempotente e para warn/skip o modo GPU quando JOCL não estiver presente.
+Descrição resumida da metodologia e análise estatística aplicada aos resultados:
 
-- Arquivos de suporte
-	- `requirements.txt` — dependências Python (`pandas`, `matplotlib`).
-	- `.gitignore` — regras para não commitar `results/`, `*.class`, ambientes virtuais, e libs nativas.
-	- `USER_MANUAL.md` — instruções passo-a-passo para configurar o ambiente e executar benchmarks em Windows (PowerShell).
+- Recolha de dados: para cada arquivo (Don Quixote, Dracula, Moby Dick) e para cada percentual (25,50,75,100), executou-se cada método 3 vezes. Os resultados (contagem de ocorrências e tempo em ms) foram consolidados em `results/results.csv`.
+- Métricas principais: média de tempo por cenário, variância/coeficiente de variação (CV) entre repetições, e cálculo de speedup relativo (Speedup = TempoSerial / TempoMétodo).
+- Visualizações: gráficos de tempo, speedup e verificação de contagens (para detector de erros de implementação).
+- Observações experimentais: atenção ao comportamento da primeira execução da GPU (warm-up) e à influência do overhead de criação de threads/transferência de dados.
 
-Escolhas de design e razões
+Configuração dos testes (resumo):
 
-- Separação de responsabilidades: mantive a lógica de contagem em Java (para testes de desempenho nativos) e a visualização em Python (fácil manipulação de CSV e gráficos).
-- JOCL/OpenCL é opcional: muitos usuários não têm drivers/núcleos compatíveis, por isso o projeto permite executar apenas-CPU sem falhas. Essa escolha facilita testes e compartilhamento do repositório.
-- Medição simples: usei `System.currentTimeMillis()` por simplicidade e legibilidade; para medições mais precisas prefira `System.nanoTime()` (comentado no README).
-- Kernel simples por clareza: o kernel atual testa cada posição independentemente — bom para prototipagem e comparações iniciais, porém não é o mais eficiente para muitos matches; refatorações futuras podem introduzir reduções por work-group para melhor desempenho.
+- Palavra-alvo: `the`
+- Arquivos de entrada: Don Quixote (388.208 bytes), Dracula (165.307 bytes), Moby Dick (217.452 bytes)
+- Tamanhos testados: 25%, 50%, 75%, 100%
+- Execuções: 3 repetições por cenário
+- Ferramentas: Java para execução dos algoritmos; Python (pandas/matplotlib) para plotagem
 
-Como navegar rapidamente
+## Resultados e Discussão
 
-- Para rodar um exemplo rápido (Windows PowerShell): compile `src/`, execute `benchmark.ps1` e depois rode `python-frontend/plot_results.py results\\results.csv`.
-- Para entender a implementação: abra `src/WordCountMain.java` (lógica serial e divisão por chunks) e `src/GPUWordCounter.java` (inicialização JOCL, preparação de buffers, invocação de kernel).
+Os resultados brutos foram consolidados em `results/results.csv`. Abaixo seguem tabelas sumarizadas com os tempos médios por método e percentual, seguidas de observações e gráficos.
 
-Se quiser, eu posso expandir ainda mais esta seção com um diagrama de dependências simples (ASCII) ou uma explicação linha-a-linha das funções públicas em `WordCountMain` e `GPUWordCounter`.
+### Resultados Agregados — Tempo médio (ms)
 
-— Quick Start (checklist)
+#### Don Quixote
 
-- [ ] Java 8+ instalado (`java -version`).
-- [ ] (opcional GPU) `jocl-2.0.4.jar` em `wordcount/libs/`.
-- [ ] (opcional GPU) libs nativas JOCL no `PATH` (Windows) ou `LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH` (Linux/macOS).
-- [ ] (opcional plots) Python 3 + `pandas`, `matplotlib`.
+| Percentual | SerialCPU | ParallelCPU | ParallelGPU |
+| ---------- | --------: | ----------: | ----------: |
+| 25%        |      2.00 |       12.67 |      356.33 |
+| 50%        |      3.33 |       11.33 |      156.00 |
+| 75%        |      5.00 |       13.33 |      166.00 |
+| 100%       |      4.67 |       11.67 |      161.33 |
 
-— Compilar
+#### Dracula
 
-Abra um terminal no diretório `wordcount/src` e rode (copy-paste):
+| Percentual | SerialCPU | ParallelCPU | ParallelGPU |
+| ---------- | --------: | ----------: | ----------: |
+| 25%        |      1.00 |        7.33 |      155.00 |
+| 50%        |      2.67 |        9.33 |      163.00 |
+| 75%        |      1.67 |        9.33 |      153.67 |
+| 100%       |      3.00 |        9.00 |      153.33 |
 
-Windows (PowerShell / cmd):
-```powershell
-cd path\to\wordcount\src
-javac -cp ".;../libs/jocl-2.0.4.jar" WordCountMain.java GPUWordCounter.java
-```
+#### Moby Dick
 
-Se não tiver JOCL e não precisa do GPU, basta compilar `WordCountMain.java` isoladamente.
+| Percentual | SerialCPU | ParallelCPU | ParallelGPU |
+| ---------- | --------: | ----------: | ----------: |
+| 25%        |      2.00 |        9.00 |      154.00 |
+| 50%        |      2.33 |        8.00 |      154.33 |
+| 75%        |      2.67 |        9.00 |      156.33 |
+| 100%       |      3.33 |        9.00 |      152.00 |
 
-— Executar (exemplos copy-paste)
+### Discussão
 
-Formato:
-```text
-java -cp "<classpath>" WordCountMain <mode> <inputFile> <targetWord> <runs> <outputCsv>
-```
+- Em todas as instâncias testadas, a implementação `SerialCPU` foi a mais rápida e mais estável.
+- `ParallelCPU` mostra tempos maiores na média, indicando que o overhead de paralelização (criação/gerenciamento de threads, redução das contagens) não foi amortizado pelos tamanhos de entrada usados.
+- `ParallelGPU` apresentou tempos significativamente maiores, sobretudo na primeira execução de cada cenário (warm-up/initialization). Isso sugere que o custo de transferência de dados entre host e dispositivo e a inicialização do kernel dominam o tempo total para esta tarefa.
+- A variabilidade das medições (coeficiente de variação) é pequena no Serial, moderada no ParallelCPU e alta no ParallelGPU (especialmente na primeira execução).
 
-Exemplo (Windows) — apenas serial (mais rápido de testar):
-```powershell
-java -cp ".;../libs/jocl-2.0.4.jar" WordCountMain serial ..\samples\MobyDick-217452.txt the 3 ..\results\results.csv
-```
+Estas observações são suportadas pelos gráficos abaixo.
 
-Exemplo (Windows) — todos os modos (requer JOCL native libs + drivers OpenCL):
-```powershell
-java -cp ".;../libs/jocl-2.0.4.jar" WordCountMain all ..\samples\MobyDick-217452.txt the 3 ..\results\results.csv
-```
+### Gráficos das execuções (visualização)
 
-Exemplo (Unix/macOS):
-```bash
-java -cp ".:../libs/jocl-2.0.4.jar" WordCountMain all ../samples/MobyDick-217452.txt the 3 ../results/results.csv
-```
+Os gráficos gerados automaticamente foram embutidos para inspeção:
 
-— Gerar gráficos (opcional)
+![Tempo de execução - comparativo](https://i.imgur.com/YetlqIl.png)
 
-Instale dependências Python e execute o script de plot:
+![Contagens (verificação de correção)](https://i.imgur.com/hLbvBuz.png)
 
-```powershell
-pip install pandas matplotlib
-python python-frontend/plot_results.py results\results.csv
-```
+![Speedup anotado](https://i.imgur.com/Hevqzkl.png)
 
-— Troubleshooting rápido (GPU / JOCL)
+## Conclusão
 
-- Erro: `UnsatisfiedLinkError` ao inicializar JOCL
-	- Significa que as libs nativas (DLL/.so/.dylib) não estão no `PATH` ou `java.library.path`.
-	- Solução rápida (Windows PowerShell):
-		```powershell
-		$env:PATH += ";C:\caminho\para\jocl\native"
-		java -Djava.library.path="C:\caminho\para\jocl\native" -cp ".;../libs/jocl-2.0.4.jar" WordCountMain gpu ..\samples\MobyDick-217452.txt the 1 ..\results\r.csv
-		```
-- Resultado GPU divergente / zero
-	- Teste com `cpu` OpenCL device (algumas plataformas expõem CPU OpenCL drivers).
-	- O kernel usa `atomic_inc` — alguns dispositivos/implementações podem agir diferente; considere reescrever para redução por work-group se necessário.
-- Procure por logs/stacktrace: `GPU counting failed:` (o `WordCountMain` imprime stack trace quando a chamada JOCL falha).
+Para a tarefa e volumes testados, a implementação serial em CPU fornece melhor desempenho e previsibilidade. As alternativas paralelas (ParallelCPU, ParallelGPU) introduzem overheads (threads, transferências, inicialização de kernels) que não são compensados pelos benefícios de paralelismo neste caso.
 
-— Notas sobre comportamento e precisão
+Recomendações:
 
-- `countSerial` permite matches sobrepostos (`idx += 1`). Se quiser evitar overlap, mude para `idx += target.length()`.
-- `WordCountMain` usa `System.currentTimeMillis()` para medir; para medições mais precisas use `System.nanoTime()`.
-- O kernel GPU compara bytes (UTF-8). Se seu `target` contiver caracteres multi-byte, garanta que a string passada ao programa esteja codificada da mesma forma.
+- Use implementação serial para entradas pequenas/moderadas.
+- Caso precise de paralelismo, avalie aumentar muito o tamanho dos dados, aumentar a granularidade das tarefas, ou mudar o tipo de problema para um mais compute-bound.
 
-— Resultado esperado
+## Anexos
 
-- `results/results.csv` com colunas: `method,file,target,count,millis,run`.
-- `results_time.png` e `results_counts.png` gerados pelo script Python (quando executado).
+- Link do repositório: https://github.com/AbreuGCA/Analise-comparativa-de-algoritmos-com-uso-de-paralelismo
+- Dados consolidados: `results/results.csv`
+
+---
